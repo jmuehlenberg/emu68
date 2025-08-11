@@ -1,6 +1,88 @@
 #include <stdint.h>
 /*
     Copyright © 2019 Michal Schulz <michal.schulz@gmx.de>
+
+#ifdef EMU68_MMU_SCAFFOLD
+#include "mmu030.h"
+// == EMU68_MMU_SLOWPATH_HELPERS ==
+// Emit a call to C helpers emu_mmu_ld*/st* using AArch64 calling convention.
+// We assume:
+//  - addr_reg holds logical address
+//  - result goes to 'reg' for loads
+//  - is_instr=0 for data loads/stores; super=1 (temporary, TODO: bind to SR.S)
+static inline uint32_t * EMIT_MMU_Load(uint32_t *ptr, uint8_t size, uint8_t reg, uint8_t addr_reg, int sign_ext)
+{
+    union { uint64_t u64; uint16_t u16[4]; } u;
+    // Save caller-saved registers we'll clobber (x0..x3 and x1 for fn ptr)
+    *ptr++ = stp64_preindex(31, 0, 1, -48);
+    *ptr++ = stp64(31, 2, 3, 16);
+    *ptr++ = str64_offset(31, 30, 32);
+
+    // args: x0 = addr, x1 = is_instr=0, x2 = super=1, x3 = trap* = 0
+    *ptr++ = mov_reg(0, addr_reg);
+    *ptr++ = mov_immed_u16(1, 0, 0);
+    *ptr++ = mov_immed_u16(2, 1, 0);
+    *ptr++ = mov_reg(3, 31); // xzr
+
+    // func pointer into x9 (callee): choose by size
+    if (size == 4) u.u64 = (uintptr_t)emu_mmu_ld32;
+    else if (size == 2) u.u64 = (uintptr_t)emu_mmu_ld16;
+    else u.u64 = (uintptr_t)emu_mmu_ld8;
+    *ptr++ = mov64_immed_u16(9, u.u16[3], 0);
+    *ptr++ = movk64_immed_u16(9, u.u16[2], 1);
+    *ptr++ = movk64_immed_u16(9, u.u16[1], 2);
+    *ptr++ = movk64_immed_u16(9, u.u16[0], 3);
+
+    *ptr++ = blr(9);
+
+    // result in x0 -> place into 'reg', with optional sign/zero extend
+    if (size == 4) {
+        *ptr++ = mov_reg(reg, 0);
+    } else if (size == 2) {
+        if (sign_ext) *ptr++ = sxth(reg, 0);
+        else          *ptr++ = uxth(reg, 0);
+    } else {
+        if (sign_ext) *ptr++ = sxtb(reg, 0);
+        else          *ptr++ = uxtb(reg, 0);
+    }
+
+    // restore
+    *ptr++ = ldr64_offset(31, 30, 32);
+    *ptr++ = ldp64(31, 2, 3, 16);
+    *ptr++ = ldp64_postindex(31, 0, 1, 48);
+    return ptr;
+}
+
+static inline uint32_t * EMIT_MMU_Store(uint32_t *ptr, uint8_t size, uint8_t addr_reg, uint8_t reg)
+{
+    union { uint64_t u64; uint16_t u16[4]; } u;
+    *ptr++ = stp64_preindex(31, 0, 1, -48);
+    *ptr++ = stp64(31, 2, 3, 16);
+    *ptr++ = str64_offset(31, 30, 32);
+
+    // args: x0 = addr, x1 = value, x2 = super=1, x3 = trap* = 0
+    *ptr++ = mov_reg(0, addr_reg);
+    *ptr++ = mov_reg(1, reg);
+    *ptr++ = mov_immed_u16(2, 1, 0);
+    *ptr++ = mov_reg(3, 31);
+
+    if (size == 4) u.u64 = (uintptr_t)emu_mmu_st32;
+    else if (size == 2) u.u64 = (uintptr_t)emu_mmu_st16;
+    else u.u64 = (uintptr_t)emu_mmu_st8;
+    *ptr++ = mov64_immed_u16(9, u.u16[3], 0);
+    *ptr++ = movk64_immed_u16(9, u.u16[2], 1);
+    *ptr++ = movk64_immed_u16(9, u.u16[1], 2);
+    *ptr++ = movk64_immed_u16(9, u.u16[0], 3);
+
+    *ptr++ = blr(9);
+
+    *ptr++ = ldr64_offset(31, 30, 32);
+    *ptr++ = ldp64(31, 2, 3, 16);
+    *ptr++ = ldp64_postindex(31, 0, 1, 48);
+    return ptr;
+}
+#endif
+
     https://github.com/michalsc
 
     This Source Code Form is subject to the terms of the

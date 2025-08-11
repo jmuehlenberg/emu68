@@ -213,3 +213,12 @@ target_compile_definitions(Emu68.elf PRIVATE)
 
 configure_file(include/version.h.in include/version.h @ONLY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/.git/index)
+
+# MMU scaffolding
+set(EMU68_SOURCES ${EMU68_SOURCES} src/mmu/mmu030.c)
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
+option(EMU68_MMU_SCAFFOLD "Enable MMU slow-path scaffold" ON)
+if(EMU68_MMU_SCAFFOLD)
+  add_definitions(-DEMU68_MMU_SCAFFOLD=1)
+endif()

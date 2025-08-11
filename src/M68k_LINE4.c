@@ -1983,7 +1983,7 @@ static uint32_t *EMIT_MOVEC(uint32_t *ptr, uint16_t opcode, uint16_t **m68k_ptr,
             case 0x003: // TCR - write bits 15, 14, read all zeros for now
                 tmp = RA_AllocARMRegister(&ptr);
                 *ptr++ = bic_immed(tmp, reg, 30, 16);
-                *ptr++ = bic_immed(tmp, tmp, 1, 32 - 15); // Clear E bit, do not allow turning on MMU
+                //*ptr++ = bic_immed(tmp, tmp, 1, 32 - 15); // (patched) allow setting E bit
                 *ptr++ = strh_offset(ctx, tmp, __builtin_offsetof(struct M68KState, TCR));
                 RA_FreeARMRegister(&ptr, tmp);
                 break;
